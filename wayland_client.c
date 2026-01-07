@@ -217,6 +217,17 @@ struct window wayland_create_window() {
 }
 
 bool wayland_dispatch_complete() {
+    while (wl_display_prepare_read(display) != 0) {
+        if (wl_display_dispatch_pending(display) == -1) {
+            return false;
+        }
+    }
+
+    if (wl_display_flush(display) == -1) {
+        wl_display_cancel_read(display);
+        return false;
+    }
+
     int display_fd = wl_display_get_fd(display);
     struct pollfd pfd = {
         .fd = display_fd,
@@ -225,18 +236,21 @@ bool wayland_dispatch_complete() {
 
     int poll_result = poll(&pfd, 1, 0);
     if (poll_result > 0) {
-        if (wl_display_dispatch(display) == -1) {
+        if (wl_display_read_events(display) == -1) {
             return false;
         }
-    } else if (poll_result == 0) {
+
         if (wl_display_dispatch_pending(display) == -1) {
             return false;
         }
     } else {
-        return false;
+        wl_display_cancel_read(display);
+        if (poll_result < 0) {
+            return false;
+        }
     }
 
-    return wl_display_flush(display) != -1;
+    return true;
 }
 
 void wayland_render_frame() {
