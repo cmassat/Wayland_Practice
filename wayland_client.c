@@ -22,21 +22,12 @@ struct wl_shm_pool *pool;
 static int fd; 
 static int size;
 static int stride;
+static bool configured = false;
 static void on_quit(void *userdata)
 {
     int *running_ptr = userdata;
     *running_ptr = 0;
 }
-
-struct window {
-    int width, height;
-    bool configured;
-    struct wl_buffer *buffer;
-    void *data;
-    int fd;
-    int size;
-    int stride;
-};
 
 static struct window win = {
     .width = 640,
@@ -156,8 +147,8 @@ xdg_surface_configure(void *userdata,
     struct window *win = userdata;
     xdg_surface_ack_configure(surface, serial);
 
-    if (!win->configured) {
-        win->configured = true;
+    if (!configured) {
+        configured = true;
         if (buffer)
             wayland_destroy_buffer();
 
@@ -216,7 +207,7 @@ struct xdg_toplevel *toplevel =
 struct window wayland_create_window() {
     wayland_init();
 
-    while (!win.configured) {
+    while (!configured) {
         if (wl_display_dispatch(display) == -1) {
             break;
         }
