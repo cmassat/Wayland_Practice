@@ -21,7 +21,6 @@ static struct wl_seat *seat;
 struct wl_shm_pool *pool;
 static int fd; 
 static int size;
-static int stride;
 static bool configured = false;
 static void on_quit(void *userdata)
 {
@@ -104,8 +103,7 @@ static const struct wl_buffer_listener buffer_listener = {
 };
 
 void *waylen_create_buffer(int width, int height) {
-
-    stride = width * 4;
+    int stride = width * 4;
     size  = stride * height;
 
     fd = memfd_create("buffer", 0);
@@ -154,7 +152,7 @@ xdg_surface_configure(void *userdata,
 
         waylen_create_buffer(win->width, win->height);
         win->data = data;
-        win->stride = stride;
+        win->stride = win->width * 4;
     }
 }
 
@@ -239,10 +237,6 @@ bool wayland_dispatch_complete() {
         if (wl_display_read_events(display) == -1) {
             return false;
         }
-
-        if (wl_display_dispatch_pending(display) == -1) {
-            return false;
-        }
     } else {
         wl_display_cancel_read(display);
         if (poll_result < 0) {
@@ -250,7 +244,7 @@ bool wayland_dispatch_complete() {
         }
     }
 
-    return true;
+    return wl_display_dispatch_pending(display) != -1;
 }
 
 void wayland_render_frame() {
