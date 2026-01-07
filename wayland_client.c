@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <poll.h>
 #include "keyboard.h"
 
 static struct wl_display     *display;
@@ -20,6 +21,7 @@ static struct wl_seat *seat;
 struct wl_shm_pool *pool;
 static int fd; 
 static int size;
+static int stride;
 static void on_quit(void *userdata)
 {
     int *running_ptr = userdata;
@@ -112,7 +114,7 @@ static const struct wl_buffer_listener buffer_listener = {
 
 void *waylen_create_buffer(int width, int height) {
 
-    int stride = width * 4;
+    stride = width * 4;
     size  = stride * height;
 
     fd = memfd_create("buffer", 0);
@@ -147,20 +149,21 @@ void wayland_destroy_buffer()  {
 }
 
 static void
-xdg_surface_configure(void *data,
+xdg_surface_configure(void *userdata,
                       struct xdg_surface *surface,
                       uint32_t serial)
 {
-    struct window *win = data;
+    struct window *win = userdata;
     xdg_surface_ack_configure(surface, serial);
 
     if (!win->configured) {
         win->configured = true;
-    
-    if (buffer)
-        wayland_destroy_buffer();
+        if (buffer)
+            wayland_destroy_buffer();
 
         waylen_create_buffer(win->width, win->height);
+        win->data = data;
+        win->stride = stride;
     }
 }
 
@@ -213,17 +216,40 @@ struct xdg_toplevel *toplevel =
 struct window wayland_create_window() {
     wayland_init();
 
-   return win;
+    while (!win.configured) {
+        if (wl_display_dispatch(display) == -1) {
+            break;
+        }
+    }
+
+    return win;
 }
 
 bool wayland_dispatch_complete() {
-    return wl_display_dispatch(display) != -1;
+    int display_fd = wl_display_get_fd(display);
+    struct pollfd pfd = {
+        .fd = display_fd,
+        .events = POLLIN,
+    };
+
+    int poll_result = poll(&pfd, 1, 0);
+    if (poll_result > 0) {
+        if (wl_display_dispatch(display) == -1) {
+            return false;
+        }
+    } else if (poll_result == 0) {
+        if (wl_display_dispatch_pending(display) == -1) {
+            return false;
+        }
+    } else {
+        return false;
+    }
+
+    return wl_display_flush(display) != -1;
 }
 
 void wayland_render_frame() {
     wl_surface_attach(surface, buffer, 0, 0);
+    wl_surface_damage_buffer(surface, 0, 0, win.width, win.height);
     wl_surface_commit(surface);
-
-    wl_display_dispatch_pending(display);
-    wl_display_flush(display);
 }
