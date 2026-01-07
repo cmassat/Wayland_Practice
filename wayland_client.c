@@ -238,6 +238,7 @@ bool wayland_dispatch_complete() {
 
 void wayland_render_frame() {
     wl_surface_attach(surface, buffer, 0, 0);
+    wl_surface_damage_buffer(surface, 0, 0, win.width, win.height);
     wl_surface_commit(surface);
 
     wl_display_dispatch_pending(display);
